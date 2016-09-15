@@ -246,11 +246,11 @@ public:
   {
     for(int nT = 0; nT < nTimes; ++nT)
     {
-      for(nP = 0; nP < 4; ++nP)
-        dispalyDigitAtPos(8, nP);
+      for(int nP = 0; nP < 4; ++nP)
+        displayDigitAtPos(8, nP);
       delay(300);
-      for(nP = 0; nP < 4; ++nP)
-        dispalyDigitAtPos(10, nP);
+      for(int nP = 0; nP < 4; ++nP)
+        displayDigitAtPos(10, nP);
       delay(300);
     }
   }
@@ -300,13 +300,14 @@ public:
       delay(2000); // adjust delay to pour nesessary amount of liquid
       digitalWrite(pumpPin_, 0);      
   }
-}
+};
 
 // main program starts here
 
 CPhoneReader phoneReader;
 CGameState gameState;
 CDisplay digitDisplay;
+CPump pump;
 int nDigitsObtained = 0; // how many digits we received from user
 int nAnswer = 0; // what we received
 int tensPow[4] = {0, 10, 100, 1000};
@@ -316,7 +317,10 @@ void setup()
   Serial.begin(9600);  //Initialize serial for debugging
   Serial.println("ISKRA 1.0");
 
-  //pinMode(latchPin_, OUTPUT);
+  phoneReader.init();
+  gameState.init();
+  digitDisplay.init();
+  pump.init();
   
   digitDisplay.debug();
 }
@@ -329,7 +333,7 @@ void loop()
   if(nDigit >= 0)
   {
     nAnswer += tensPow[nDigitsObtained] * nAnswer + nDigit;
-    digitDisplay.dispalyDigitAtPos(nDigit, nDigitsObtained);
+    digitDisplay.displayDigitAtPos(nDigit, nDigitsObtained);
     ++nDigitsObtained;
     
     //Serial.print("got digit: ");      
@@ -339,24 +343,24 @@ void loop()
 
   if(nDigitsObtained == 4)
   {
-    nDigitsObtained = 0;
     if(gameState.checkAnswer(nAnswer)) // correct
     {
       delay(300);
       digitDisplay.displayBlink(3);
       
       // put the reward
-      pump.pourDrink()
+      pump.pourDrink();
 
       gameState.newState();
-      gameState.dispalyState();
+      gameState.displayState();
     }
     else
     {
       delay(100);
       digitDisplay.displayBlink(1);
-      nAnswer = 0;
     }
+    nDigitsObtained = 0;
+    nAnswer = 0;
   }
   
 }

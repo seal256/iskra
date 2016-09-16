@@ -11,8 +11,8 @@ const int DIGIT3_PIN = 4; //
 const int DIGIT4_PIN = 5; // 
 
 // shift register pins
-const int LATCH_PIN = 10; // Pin connected to ST_CP of 74HC595
-const int CLOCK_PIN = 11; // Pin connected to SH_CP of 74HC595
+const int CLOCK_PIN = 10; // Pin connected to SH_CP of 74HC595
+const int LATCH_PIN = 11; // Pin connected to ST_CP of 74HC595
 const int DATA_PIN = 12; // Pin connected to DS of 74HC595
 
 // leds to dispaly internal state
@@ -28,8 +28,8 @@ class CPhoneReader
 {
   const int nPhonePin_ = PHONE_PIN; // phone pin
   const int nVoltageTh_ = 500; // threshold for signal from phone
-  const int nTimeTh_ = 100; // [ms] time delay impossible between two counts of one number transmission 
-  int nLastTime_ = 0; // [ms] time when last signal transmission finished
+  const long long int nTimeTh_ = 100; // [ms] time delay impossible between two counts of one number transmission 
+  long long int nLastTime_ = 0; // [ms] time when last signal transmission finished
   bool bState_ = false; // high or low
   int nResult_ = -1; // number received from phone 
   float fVoltage_ = 0; // current averaged voltage
@@ -45,12 +45,12 @@ public:
   // all other time will return -1
   int readPinValue() 
   {
-    int nCurrTime = millis();
+    long long int nCurrTime = millis();
     if(nCurrTime < nLastTime_) // time overload happend
       return clean();
 
     int nVal = analogRead(nPhonePin_);
-    fVoltage_ = float(nVal) * 0.2 + fVoltage_ * 0.8; // smooth update of voltage
+    fVoltage_ = float(nVal) * 0.3 + fVoltage_ * 0.7; // smooth update of voltage
 
     //if(++nDebugCounter_ % nDebugFreq_ == 0)
     //{
@@ -108,7 +108,7 @@ class CGameState
 {
   byte nState_ = 0; // number of current question
   const int nQuestions_ = 16; // total number of questions
-  const int pAnswers_[16] = {1917, 10, 1828};
+  const int pAnswers_[16] = {1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917};
   const int pPins_[4] = {LED1_PIN, LED2_PIN, LED3_PIN, LED4_PIN};
 
 public:
@@ -137,7 +137,7 @@ public:
 
 
 // send byte to shift register
-void shiftOut(int myDataPin, int myClockPin, byte myDataOut) {
+void shiftRegisterOut(int myDataPin, int myClockPin, byte myDataOut) {
   // This shifts 8 bits out MSB first, 
   //on the rising edge of the clock,
   //clock idles low
@@ -191,6 +191,7 @@ class CDisplay
   const int dataPin_ = DATA_PIN; // Pin connected to DS of 74HC595
   const int digitPins_[4] = {DIGIT1_PIN, DIGIT2_PIN, DIGIT3_PIN, DIGIT4_PIN};
   byte dataArray_[11]; // codes for 7 segment indicator
+  int digitsToDisplay_[4]; // what digits to display now
 
 public:
   void init()
@@ -199,12 +200,15 @@ public:
     pinMode(clockPin_, OUTPUT);
     pinMode(dataPin_, OUTPUT);
     for(int nP = 0; nP < 4; ++nP)
+    {
       pinMode(digitPins_[nP], OUTPUT);
-    
+      digitsToDisplay_[nP] = 10;
+    }
   }
   CDisplay()
   {
     // abcdefg
+    /*
     dataArray_[0] = 0x7E; 
     dataArray_[1] = 0x30; 
     dataArray_[2] = 0x6D; 
@@ -215,30 +219,67 @@ public:
     dataArray_[7] = 0x70; 
     dataArray_[8] = 0x7F; 
     dataArray_[9] = 0x7B;
+    //*/
+    
+    dataArray_[0] = 0x3F; 
+    dataArray_[1] = 0x06; 
+    dataArray_[2] = 0x5B; 
+    dataArray_[3] = 0x4F; 
+    dataArray_[4] = 0x66; 
+    dataArray_[5] = 0x6D; 
+    dataArray_[6] = 0x7D; 
+    dataArray_[7] = 0x07; 
+    dataArray_[8] = 0x7F; 
+    dataArray_[9] = 0x6F;
+
     dataArray_[10] = 0x00; // all off    
   }
 
-  // display nVal in position nPos
-  // nVal == 10 means black screen
-  void displayDigitAtPos(int nDigit, int nPos)
-  {
-    if(nDigit > 10 || nDigit < 0)
-      return;
-
-    selectDigitPin(nPos);
-    displayDigit(nDigit);
-    clearDigitPins();
-  }
 
   void debug()
   {
+    //changeDigitAtPos(7, 0);
+    //changeDigitAtPos(6, 1);
+    //changeDigitAtPos(5, 2);
+    //changeDigitAtPos(4, 3);
+    
+    //if(millis() % 1000 == 0)
+    //{
+    //}
+
+    /*
+    if(millis() - nLastTime > 1000)
+    {
+      for(int nP =0; nP < 4; ++nP)
+      {
+        changeDigitAtPos(nDigit, nP); 
+      }
+      ++nDigit;
+      nDigit %= 11;
+
+      nLastTime = millis();
+      //bGot = true;
+    }
+    */
+    
+    //for(int nP = 0; nP < 4; ++nP)
+    //{
+    //  for (int nD = 0; nD < 11; ++nD) 
+    //  {
+    //    changeDigitAtPos(nD, nP);
+    //    displayWork();
+    //    delay(300);
+    //  }
+    //}
+  }
+  
+  void debugPins()
+  {
     for(int nP = 0; nP < 4; ++nP)
     {
-      for (int nD = 0; nD < 11; ++nD) 
-      {
-        displayDigitAtPos(nD, nP);
-        delay(300);
-      }
+      selectDigitPin(nP);
+      delay(300);
+      clearDigitPins();
     }
   }
 
@@ -247,12 +288,46 @@ public:
     for(int nT = 0; nT < nTimes; ++nT)
     {
       for(int nP = 0; nP < 4; ++nP)
-        displayDigitAtPos(8, nP);
-      delay(300);
-      for(int nP = 0; nP < 4; ++nP)
-        displayDigitAtPos(10, nP);
-      delay(300);
+      {
+        changeDigitAtPos(8, nP);
+        displayWork();
+        delay(10);
+      }
+      //for(int nP = 0; nP < 4; ++nP)
+      //{  
+      //  displayDigitAtPos(10, nP);
+      //  delay(300);
+      //}
     }
+  }
+
+  void clearDisplay()
+  {
+    for(int nP = 0; nP < 4; ++nP)
+      changeDigitAtPos(10, nP);
+     displayWork();
+  }
+
+  // display nVal in position nPos
+  // nVal == 10 means black screen
+  void changeDigitAtPos(int nDigit, int nPos)
+  {
+    if(nDigit > 10 || nDigit < 0)
+      return;
+
+    digitsToDisplay_[nPos] = nDigit;
+  }
+
+  // run in main cycle with high frequency
+  void displayWork()
+  {
+    for(int nP = 0; nP < 4; ++nP)
+    {    
+      sendDigit(10); // clear byte in register
+      selectDigitPin(nP);
+      sendDigit(digitsToDisplay_[nP]);
+      delay(1);
+    }//clearDigitPins();    
   }
 
 private:
@@ -265,11 +340,11 @@ private:
 
   void clearDigitPins()
   {
-    for(int nP = 1; nP < 4; ++nP)
+    for(int nP = 0; nP < 4; ++nP)
       digitalWrite(digitPins_[nP], 0); // set all to 0    
   }
   
-  void displayDigit(int nVal)
+  void sendDigit(int nVal)
   {
     if(nVal > 10 || nVal < 0)
       return;
@@ -277,7 +352,7 @@ private:
     //ground latchPin and hold low for as long as you are transmitting
     digitalWrite(latchPin_, 0);
     //move 'em out
-    shiftOut(dataPin_, clockPin_, dataArray_[nVal]);
+    shiftRegisterOut(dataPin_, clockPin_, dataArray_[nVal]);
     //return the latch pin high to signal chip that it 
     //no longer needs to listen for information
     digitalWrite(latchPin_, 1);
@@ -308,59 +383,97 @@ CPhoneReader phoneReader;
 CGameState gameState;
 CDisplay digitDisplay;
 CPump pump;
+
 int nDigitsObtained = 0; // how many digits we received from user
 int nAnswer = 0; // what we received
-int tensPow[4] = {0, 10, 100, 1000};
+long long int nTimeOfAnswerEnd = -1;
+bool bAnswerCorrect = false;
 
 void setup()
 {               
-  Serial.begin(9600);  //Initialize serial for debugging
-  Serial.println("ISKRA 1.0");
+  //Serial.begin(9600);  //Initialize serial for debugging
+  //Serial.println("ISKRA 1.0");
 
   phoneReader.init();
   gameState.init();
   digitDisplay.init();
   pump.init();
   
-  digitDisplay.debug();
+  //digitDisplay.debug();
+  //digitDisplay.changeDigitAtPos(7, 2); 
 }
+
+//bool bGot = false;
+//int nDigit = -1;
+//long long int nLastTime = 1;
 
 
 void loop() 
 {
+  digitDisplay.displayWork(); // strobe display
+  //return;
+  
+  // simulate digit from phone
+  /*
+  if(millis() - nLastTime > 1000)
+  {
+      //for(int nP =0; nP < 4; ++nP)
+      //{
+      //  digitDisplay.changeDigitAtPos(nDigit, nP); 
+      //}
+      ++nDigit;
+      nDigit %= 10;
+
+      nLastTime = millis();
+      bGot = true;
+  }
+  //*/
+  
   int nDigit = phoneReader.readPinValue(); // try to get phone output
 
+  //if(bGot) //nDigit >= 0)
   if(nDigit >= 0)
   {
-    nAnswer += tensPow[nDigitsObtained] * nAnswer + nDigit;
-    digitDisplay.displayDigitAtPos(nDigit, nDigitsObtained);
+    nAnswer = 10 * nAnswer + nDigit;
+    digitDisplay.changeDigitAtPos(nDigit, 3-nDigitsObtained);
     ++nDigitsObtained;
     
     //Serial.print("got digit: ");      
-    //Serial.println(nPhoneNum);
+    //Serial.println(nDigit);
+    //bGot = false;
   }
-  delay(1);
+  //delay(1);
 
   if(nDigitsObtained == 4)
-  {
+  {    
+    nTimeOfAnswerEnd = millis();
+    // We will wait a bit since last letter is passed
+    // Otherwize user won't see the last digit
     if(gameState.checkAnswer(nAnswer)) // correct
-    {
-      delay(300);
-      digitDisplay.displayBlink(3);
+      bAnswerCorrect = true;
       
+    nDigitsObtained = 0;
+  }
+
+  if(nTimeOfAnswerEnd > 0 && millis() - nTimeOfAnswerEnd > 1000)
+  {
+    digitDisplay.clearDisplay();
+    //delay(200);
+    
+    //digitDisplay.displayBlink(3);
+
+    if(bAnswerCorrect)
+    {
       // put the reward
       pump.pourDrink();
 
       gameState.newState();
-      gameState.displayState();
+      gameState.displayState();   
     }
-    else
-    {
-      delay(100);
-      digitDisplay.displayBlink(1);
-    }
-    nDigitsObtained = 0;
+    
+    nTimeOfAnswerEnd = -1;
     nAnswer = 0;
+    bAnswerCorrect = false;
   }
   
 }

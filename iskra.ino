@@ -1,25 +1,16 @@
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+
+// I2C pins for display (fixed!)
+// SCL pin 5
+// SDA pin 4
+LiquidCrystal_I2C lcd(0x3F, 16, 2);
+
 // analog pins
-const int PHONE_PIN = 5; // phone input 
+const int PHONE_PIN = 3; // phone input 
 
 // digital pins
-const int PUMP_PIN = 13; // pump transistor 
-
-// display digit pins
-const int DIGIT1_PIN = 2; // 
-const int DIGIT2_PIN = 3; // 
-const int DIGIT3_PIN = 4; // 
-const int DIGIT4_PIN = 5; // 
-
-// shift register pins
-const int CLOCK_PIN = 10; // Pin connected to SH_CP of 74HC595
-const int LATCH_PIN = 11; // Pin connected to ST_CP of 74HC595
-const int DATA_PIN = 12; // Pin connected to DS of 74HC595
-
-// leds to dispaly internal state
-const int LED1_PIN = 6; // 
-const int LED2_PIN = 7; // 
-const int LED3_PIN = 8; // 
-const int LED4_PIN = 9; // 
+const int PUMP_PIN = 9; // pump transistor 
 
 
 // dummy analog phone interface
@@ -27,7 +18,7 @@ const int LED4_PIN = 9; //
 class CPhoneReader
 {
   const int nPhonePin_ = PHONE_PIN; // phone pin
-  const int nVoltageTh_ = 500; // threshold for signal from phone
+  const int nVoltageTh_ = 600; // threshold for signal from phone
   const long long int nTimeTh_ = 100; // [ms] time delay impossible between two counts of one number transmission 
   long long int nLastTime_ = 0; // [ms] time when last signal transmission finished
   bool bState_ = false; // high or low
@@ -35,6 +26,7 @@ class CPhoneReader
   float fVoltage_ = 0; // current averaged voltage
   //int nDebugCounter_ = 0;
   //const int nDebugFreq_ = 100;
+  long long int nLastPrintTime_ = 0;
   
 public:
   void init()
@@ -50,14 +42,28 @@ public:
       return clean();
 
     int nVal = analogRead(nPhonePin_);
-    fVoltage_ = float(nVal) * 0.3 + fVoltage_ * 0.7; // smooth update of voltage
+    fVoltage_ = float(nVal);// * 0.3 + fVoltage_ * 0.7; // smooth update of voltage
 
     //if(++nDebugCounter_ % nDebugFreq_ == 0)
     //{
     //  nDebugCounter_ = 0;
-    //  Serial.println(fVoltage_);
+    if(nCurrTime - nLastPrintTime_ > 10)
+    {
+      Serial.print((int)nCurrTime);
+      Serial.print('\t');
+      Serial.println(fVoltage_);
+      nLastPrintTime_ = nCurrTime;
+    }
     //}
     bool bNewState = fVoltage_ > nVoltageTh_;
+    //if (bNewState) 
+    //{
+      //lcd.clear();
+      //lcd.setCursor(0,0);
+      //lcd.print(fVoltage_);      
+      //lcd.setCursor(0,1);
+      //lcd.print(bNewState);      
+    //}
     
     if(!bNewState and bState_) // 1 became 0
     {
@@ -65,9 +71,11 @@ public:
       //  nResult_ = 1;
       //else
         ++nResult_;
+      //lcd.setCursor(0, 1);
+      //lcd.print(nResult_);
         
-      if(nResult_ == 10) // zero is coded by ten counts + first long one
-        nResult_ = 0;  
+      //if(nResult_ == 10) // zero is coded by ten counts + first long one
+      //  nResult_ = 0;  
       
       nLastTime_ = nCurrTime; // remember time
       //Serial.print("signal:");
@@ -100,22 +108,33 @@ public:
     fVoltage_ = 0;
     return -1;
   }
-  
+
+  int readPinValueDebug() 
+  {
+    long long int nCurrTime = millis();
+    if(nCurrTime < nLastTime_) // time overload happend
+      return clean();
+
+    int nVal = analogRead(nPhonePin_);
+    lcd.setCursor(0,0);
+    lcd.clear();
+    lcd.print(nVal);
+    delay(100);
+    return -1;
+  }
+
 };
 
 // store game state and question answers
 class CGameState
 {
-  byte nState_ = 0; // number of current question
+  int nState_ = 0; // number of current question
   const int nQuestions_ = 16; // total number of questions
   const int pAnswers_[16] = {1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917, 1828, 1917};
-  const int pPins_[4] = {LED1_PIN, LED2_PIN, LED3_PIN, LED4_PIN};
 
 public:
   void init()
   {
-    for(int nP = 0; nP < 4; ++nP)
-      pinMode(pPins_[nP], OUTPUT);  
   }
   bool checkAnswer(int nAnswer)
   {
@@ -124,240 +143,62 @@ public:
   // choose new random state
   void newState()
   {
-    nState_ = (byte)(millis() % nQuestions_);
+    nState_ = millis() % nQuestions_;
   }
   // light up leds to display game state
   void displayState()
   {
-    for(int nB = 0; nB < 4; ++nB)
-      digitalWrite(pPins_[nB], bitRead(nState_, nB)); 
+    lcd.setCursor(0,1);
+    lcd.print(nState_);
   }
   
 };
 
 
-// send byte to shift register
-void shiftRegisterOut(int myDataPin, int myClockPin, byte myDataOut) {
-  // This shifts 8 bits out MSB first, 
-  //on the rising edge of the clock,
-  //clock idles low
-
-  //internal function setup
-  int i=0;
-  int pinState;
-  pinMode(myClockPin, OUTPUT);
-  pinMode(myDataPin, OUTPUT);
-
-  //clear everything out just in case to
-  //prepare shift register for bit shifting
-  digitalWrite(myDataPin, 0);
-  digitalWrite(myClockPin, 0);
-
-  //for each bit in the byte myDataOut�
-  //NOTICE THAT WE ARE COUNTING DOWN in our for loop
-  //This means that %00000001 or "1" will go through such
-  //that it will be pin Q0 that lights. 
-  for (i=7; i>=0; i--)  {
-    digitalWrite(myClockPin, 0);
-
-    //if the value passed to myDataOut and a bitmask result 
-    // true then... so if we are at i=6 and our value is
-    // %11010100 it would the code compares it to %01000000 
-    // and proceeds to set pinState to 1.
-    if ( myDataOut & (1<<i) ) {
-      pinState= 1;
-    }
-    else {  
-      pinState= 0;
-    }
-
-    //Sets the pin to HIGH or LOW depending on pinState
-    digitalWrite(myDataPin, pinState);
-    //register shifts bits on upstroke of clock pin  
-    digitalWrite(myClockPin, 1);
-    //zero the data pin after shift to prevent bleed through
-    digitalWrite(myDataPin, 0);
-  }
-
-  //stop shifting
-  digitalWrite(myClockPin, 0);
-}
-
-// 4 digit display with shift regiter
+// LCD display
 class CDisplay
 {
-  const int latchPin_ = LATCH_PIN; //Pin connected to ST_CP of 74HC595
-  const int clockPin_ = CLOCK_PIN; //Pin connected to SH_CP of 74HC595
-  const int dataPin_ = DATA_PIN; // Pin connected to DS of 74HC595
-  const int digitPins_[4] = {DIGIT1_PIN, DIGIT2_PIN, DIGIT3_PIN, DIGIT4_PIN};
-  byte dataArray_[11]; // codes for 7 segment indicator
-  int digitsToDisplay_[4]; // what digits to display now
-
+  
 public:
   void init()
   {
-    pinMode(latchPin_, OUTPUT);
-    pinMode(clockPin_, OUTPUT);
-    pinMode(dataPin_, OUTPUT);
-    for(int nP = 0; nP < 4; ++nP)
-    {
-      pinMode(digitPins_[nP], OUTPUT);
-      digitsToDisplay_[nP] = 10;
-    }
-  }
-  CDisplay()
-  {
-    // abcdefg
-    /*
-    dataArray_[0] = 0x7E; 
-    dataArray_[1] = 0x30; 
-    dataArray_[2] = 0x6D; 
-    dataArray_[3] = 0x79; 
-    dataArray_[4] = 0x33; 
-    dataArray_[5] = 0x5B; 
-    dataArray_[6] = 0x5F; 
-    dataArray_[7] = 0x70; 
-    dataArray_[8] = 0x7F; 
-    dataArray_[9] = 0x7B;
-    //*/
-    
-    dataArray_[0] = 0x3F; 
-    dataArray_[1] = 0x06; 
-    dataArray_[2] = 0x5B; 
-    dataArray_[3] = 0x4F; 
-    dataArray_[4] = 0x66; 
-    dataArray_[5] = 0x6D; 
-    dataArray_[6] = 0x7D; 
-    dataArray_[7] = 0x07; 
-    dataArray_[8] = 0x7F; 
-    dataArray_[9] = 0x6F;
+    // initialize the LCD
+    lcd.begin();
 
-    dataArray_[10] = 0x00; // all off    
+    // Turn on the blacklight and print a message.
+    lcd.backlight();
+    lcd.print("ISKRA 2017");
+    delay(500);
+    lcd.clear();
+    lcd.backlight();
   }
-
 
   void debug()
   {
-    //changeDigitAtPos(7, 0);
-    //changeDigitAtPos(6, 1);
-    //changeDigitAtPos(5, 2);
-    //changeDigitAtPos(4, 3);
-    
-    //if(millis() % 1000 == 0)
-    //{
-    //}
-
-    /*
-    if(millis() - nLastTime > 1000)
-    {
-      for(int nP =0; nP < 4; ++nP)
-      {
-        changeDigitAtPos(nDigit, nP); 
-      }
-      ++nDigit;
-      nDigit %= 11;
-
-      nLastTime = millis();
-      //bGot = true;
-    }
-    */
-    
-    //for(int nP = 0; nP < 4; ++nP)
-    //{
-    //  for (int nD = 0; nD < 11; ++nD) 
-    //  {
-    //    changeDigitAtPos(nD, nP);
-    //    displayWork();
-    //    delay(300);
-    //  }
-    //}
   }
   
-  void debugPins()
-  {
-    for(int nP = 0; nP < 4; ++nP)
-    {
-      selectDigitPin(nP);
-      delay(300);
-      clearDigitPins();
-    }
-  }
-
   void displayBlink(int nTimes)
   {
-    for(int nT = 0; nT < nTimes; ++nT)
-    {
-      for(int nP = 0; nP < 4; ++nP)
-      {
-        changeDigitAtPos(8, nP);
-        displayWork();
-        delay(10);
-      }
-      //for(int nP = 0; nP < 4; ++nP)
-      //{  
-      //  displayDigitAtPos(10, nP);
-      //  delay(300);
-      //}
-    }
   }
 
   void clearDisplay()
   {
-    for(int nP = 0; nP < 4; ++nP)
-      changeDigitAtPos(10, nP);
-     displayWork();
+    lcd.clear();
+    lcd.backlight();
   }
 
-  // display nVal in position nPos
-  // nVal == 10 means black screen
+  // display nDigit in position nPos
+  // nDigit == 10 means black screen
   void changeDigitAtPos(int nDigit, int nPos)
   {
-    if(nDigit > 10 || nDigit < 0)
-      return;
-
-    digitsToDisplay_[nPos] = nDigit;
+      lcd.setCursor(nPos, 0);
+      lcd.print(nDigit);
   }
 
-  // run in main cycle with high frequency
-  void displayWork()
-  {
-    for(int nP = 0; nP < 4; ++nP)
-    {    
-      sendDigit(10); // clear byte in register
-      selectDigitPin(nP);
-      sendDigit(digitsToDisplay_[nP]);
-      delay(1);
-    }//clearDigitPins();    
+  void printQuestion()
+  {    
   }
-
 private:
-  // activates pin for selected digit position
-  void selectDigitPin(int nPos)
-  {
-    clearDigitPins();
-    digitalWrite(digitPins_[nPos], 1);
-  }
-
-  void clearDigitPins()
-  {
-    for(int nP = 0; nP < 4; ++nP)
-      digitalWrite(digitPins_[nP], 0); // set all to 0    
-  }
-  
-  void sendDigit(int nVal)
-  {
-    if(nVal > 10 || nVal < 0)
-      return;
-
-    //ground latchPin and hold low for as long as you are transmitting
-    digitalWrite(latchPin_, 0);
-    //move 'em out
-    shiftRegisterOut(dataPin_, clockPin_, dataArray_[nVal]);
-    //return the latch pin high to signal chip that it 
-    //no longer needs to listen for information
-    digitalWrite(latchPin_, 1);
-    
-  }
     
 };
 
@@ -391,7 +232,7 @@ bool bAnswerCorrect = false;
 
 void setup()
 {               
-  //Serial.begin(9600);  //Initialize serial for debugging
+  Serial.begin(9600);  //Initialize serial for debugging
   //Serial.println("ISKRA 1.0");
 
   phoneReader.init();
@@ -407,12 +248,23 @@ void setup()
 //int nDigit = -1;
 //long long int nLastTime = 1;
 
-
-void loop() 
+void debug()
 {
-  digitDisplay.displayWork(); // strobe display
-  //return;
+  int nDigit = phoneReader.readPinValue(); // try to get phone output
+  //delay(1);
   
+  //if(bGot) //nDigit >= 0)
+  if(nDigit >= 0)
+  {
+    nAnswer = 10 * nAnswer + nDigit;
+    //digitDisplay.changeDigitAtPos(nDigit, 3-nDigitsObtained);
+    digitDisplay.changeDigitAtPos(nDigit, 0);
+    ++nDigitsObtained;
+  }
+}
+
+void play()
+{
   // simulate digit from phone
   /*
   if(millis() - nLastTime > 1000)
@@ -430,12 +282,14 @@ void loop()
   //*/
   
   int nDigit = phoneReader.readPinValue(); // try to get phone output
-
+  //delay(1);
+  
   //if(bGot) //nDigit >= 0)
   if(nDigit >= 0)
   {
     nAnswer = 10 * nAnswer + nDigit;
-    digitDisplay.changeDigitAtPos(nDigit, 3-nDigitsObtained);
+    //digitDisplay.changeDigitAtPos(nDigit, 3-nDigitsObtained);
+    digitDisplay.changeDigitAtPos(nDigit, 0);
     ++nDigitsObtained;
     
     //Serial.print("got digit: ");      
@@ -476,4 +330,10 @@ void loop()
     bAnswerCorrect = false;
   }
   
+}
+
+
+void loop() 
+{  
+  debug();
 }
